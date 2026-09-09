@@ -25,12 +25,33 @@ This is a configuration fragment, not a complete ESPHome firmware file. Keep you
 
 ## Install
 
-1. Put the `custom_components/solix_bluetooth` directory from this repository in `/config/custom_components/solix_bluetooth` on your Home Assistant system. The `manifest.json` file must be directly inside that directory.
-2. Restart Home Assistant. It installs the pinned `SolixBLE==3.9.0` dependency automatically.
-3. Open **Settings > Devices & services**. Configure a discovered **Anker Solix Bluetooth** device, or choose **Add integration > Anker Solix Bluetooth**.
-4. Select the device and its exact model. Setup verifies a telemetry reading before saving. Allow up to two minutes, plus connection cleanup.
+Choose HACS or manual installation, then configure the integration below.
 
-No `configuration.yaml` entry is needed. For HACS, add `https://github.com/drock3/hass-solix-ble` as a custom **Integration** repository; it is not in the default HACS catalog.
+### HACS (Custom Repository)
+
+This integration is not in the default HACS catalog, so add it as a custom repository:
+
+1. If HACS is not installed, follow the [HACS download instructions](https://www.hacs.xyz/docs/use/download/download/) and [initial configuration](https://www.hacs.xyz/docs/use/configuration/basic/) first.
+2. Open **HACS** in the Home Assistant sidebar.
+3. Select the **three-dot menu** in the top-right corner, then **Custom repositories**.
+4. Enter `https://github.com/drock3/hass-solix-ble` as the repository URL, select **Integration** as the type, and select **Add**.
+5. Close the dialog and search HACS for **Anker Solix Bluetooth**. Open its repository page.
+6. Select **Download** and confirm the download when prompted.
+7. Restart Home Assistant, then follow **Configure the Integration** below.
+
+Add this URL in HACS, not in Home Assistant's app/add-on repository settings. HACS downloads the integration files; you still need to add the integration in Home Assistant after restarting.
+
+### Manual Installation
+
+1. Put the `custom_components/solix_bluetooth` directory from this repository in `/config/custom_components/solix_bluetooth` on your Home Assistant system. The `manifest.json` file must be directly inside that directory.
+2. Restart Home Assistant, then follow **Configure the Integration** below.
+
+### Configure the Integration
+
+1. Open **Settings > Devices & services**. Configure a discovered **Anker Solix Bluetooth** device, or choose **Add integration > Anker Solix Bluetooth**.
+2. Select the device and its exact model. Setup verifies a telemetry reading before saving. Allow up to two minutes, plus connection cleanup.
+
+Home Assistant installs the pinned `SolixBLE==3.9.0` dependency automatically. No `configuration.yaml` entry is needed.
 
 ## Models and Data
 
