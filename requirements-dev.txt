@@ -1,0 +1,6 @@
+pytest-homeassistant-custom-component==0.13.364
+aiousbwatcher==1.1.2
+serialx==1.10.0
+habluetooth==6.26.11
+SolixBLE==3.9.0
+ruff

@@ -1,0 +1,19 @@
+{
+  "domain": "solix_bluetooth",
+  "name": "Anker Solix Bluetooth",
+  "bluetooth": [
+    {
+      "service_uuid": "0000ff09-0000-1000-8000-00805f9b34fb",
+      "connectable": true
+    }
+  ],
+  "codeowners": ["@drock3"],
+  "config_flow": true,
+  "dependencies": ["bluetooth_adapters"],
+  "documentation": "https://github.com/drock3/hass-solix-ble",
+  "integration_type": "device",
+  "iot_class": "local_polling",
+  "loggers": ["SolixBLE"],
+  "requirements": ["SolixBLE==3.9.0"],
+  "version": "0.1.0"
+}

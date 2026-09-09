@@ -1,0 +1,36 @@
+{
+  "title": "Anker Solix Bluetooth",
+  "config": {
+    "flow_title": "{name}",
+    "step": {
+      "user": {
+        "title": "Select a Solix device",
+        "data": {"address": "Device"}
+      },
+      "model": {
+        "title": "Set up {name}",
+        "description": "Select the exact model for {name} ({address}). Close the Anker app before continuing. Connection verification can take up to two minutes.",
+        "data": {"model": "Model"}
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not read telemetry. Make sure the device is awake, the Anker app is disconnected, and an active Bluetooth proxy has a free connection slot.",
+      "invalid_telemetry": "The device connected but did not provide valid battery data. Check the selected model and firmware support in SolixBLE.",
+      "unknown": "An unexpected error occurred. Check the Home Assistant logs."
+    },
+    "abort": {
+      "already_configured": "This device is already configured.",
+      "not_supported": "This advertisement is not supported or the Bluetooth adapter cannot make active connections.",
+      "no_devices_found": "No unconfigured Solix devices were found. Enable Bluetooth on the device and place it near an active Bluetooth proxy, then try again."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Telemetry polling",
+        "description": "Seconds between telemetry sessions (30-3600). Each session releases its Bluetooth connection after receiving data.",
+        "data": {"scan_interval": "Polling interval (seconds)"}
+      }
+    }
+  }
+}
