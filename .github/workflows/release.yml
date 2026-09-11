@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - custom_components/solix_bluetooth/manifest.json
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  tag-and-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read version from manifest
+        id: manifest
+        run: echo "version=$(jq -r .version custom_components/solix_bluetooth/manifest.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the tag already exists
+        id: check
+        env:
+          TAG: v${{ steps.manifest.outputs.version }}
+        run: |
+          if git rev-parse "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag $TAG already exists, nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create tag and release
+        if: steps.check.outputs.exists == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: v${{ steps.manifest.outputs.version }}
+        run: |
+          git tag "$TAG"
+          git push origin "$TAG"
+          gh release create "$TAG" --title "$TAG" --generate-notes
