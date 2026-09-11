@@ -1,5 +1,6 @@
 """Constants and supported Solix models."""
 
+from enum import Enum
 from typing import Any
 
 from SolixBLE import (
@@ -99,3 +100,22 @@ def supported_properties(device_factory: Any) -> tuple[str, ...]:
         for name in TELEMETRY_PROPERTIES
         if isinstance(getattr(device_factory, name, None), property)
     )
+
+
+def is_known(value: Any) -> bool:
+    """Whether a property holds real data rather than a SolixBLE "unknown" sentinel.
+
+    SolixBLE never returns None for a missing reading: ints become -1, floats -1.0,
+    strings "Unknown", and enums their UNKNOWN member.
+    """
+    if value is None:
+        return False
+    if isinstance(value, Enum):
+        return value.name != "UNKNOWN"
+    if isinstance(value, str):
+        return value not in ("", "Unknown")
+    if isinstance(value, bool):
+        return True
+    if isinstance(value, (int, float)):
+        return value != -1
+    return True

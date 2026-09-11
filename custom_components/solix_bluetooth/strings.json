@@ -9,11 +9,12 @@
       },
       "model": {
         "title": "Set up {name}",
-        "description": "Select the exact model for {name} ({address}). Close the Anker app before continuing. Encryption negotiation is slow, so verification can take several minutes.",
+        "description": "Select the exact model for {name} ({address}). Wake the device first by pressing its power button so the display is on, and close the Anker app, then submit within about 30 seconds.",
         "data": {"model": "Model"}
       }
     },
     "error": {
+      "not_advertising": "No Bluetooth adapter or proxy can currently reach this device. Solix units stop advertising in standby: press the power button to wake the display, then submit again within about 30 seconds.",
       "cannot_connect": "Could not read telemetry. Make sure the device is awake, the Anker app is disconnected, and an active Bluetooth proxy has a free connection slot. The Home Assistant log records the underlying Bluetooth error.",
       "invalid_telemetry": "The device connected but did not report telemetry this integration recognises. Select a different model, or check firmware support in SolixBLE.",
       "unknown": "An unexpected error occurred. Check the Home Assistant logs."

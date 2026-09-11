@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import voluptuous as vol
 from bleak.exc import BleakError
+from bleak_retry_connector import BleakOutOfConnectionSlotsError
 
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult, OptionsFlow
@@ -20,11 +22,27 @@ from .const import (
     MODEL_NAMES,
     MODELS,
     SERVICE_UUID,
+    is_known,
     supported_properties,
 )
 from .transport import async_read_snapshot
 
 _LOGGER = logging.getLogger(__name__)
+
+# Solix units stop advertising once they drop to standby, and a stale entry in the
+# connectable history still yields a BLEDevice that can no longer be reached.
+ADVERTISEMENT_MAX_AGE = 30
+# Kept well under the frontend's patience so a bad probe reports an error instead of
+# failing the flow outright.
+PROBE_TIMEOUT = 90
+
+
+def _is_advertising(hass: Any, address: str) -> bool:
+    """Whether a connectable scanner has heard from the device recently enough."""
+    info = bluetooth.async_last_service_info(hass, address, connectable=True)
+    if info is None:
+        return False
+    return (time.monotonic() - info.time) <= ADVERTISEMENT_MAX_AGE
 
 
 def _is_valid_telemetry(snapshot: dict[str, Any]) -> bool:
@@ -36,7 +54,7 @@ def _is_valid_telemetry(snapshot: dict[str, Any]) -> bool:
     percentage = snapshot.get("battery_percentage")
     if isinstance(percentage, (int, float)):
         return 0 <= percentage <= 100
-    return any(value is not None for value in snapshot.values())
+    return any(is_known(value) for value in snapshot.values())
 
 
 class SolixBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -98,13 +116,21 @@ class SolixBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
             ble_device = bluetooth.async_ble_device_from_address(
                 self.hass, self._address, connectable=True
             )
-            if ble_device is None:
-                errors["base"] = "cannot_connect"
+            if ble_device is None or not _is_advertising(self.hass, self._address):
+                errors["base"] = "not_advertising"
             else:
                 try:
                     snapshot = await self._async_probe(model, ble_device)
                     if not _is_valid_telemetry(snapshot):
                         errors["base"] = "invalid_telemetry"
+                except BleakOutOfConnectionSlotsError as err:
+                    _LOGGER.warning(
+                        "No Bluetooth adapter could reach Solix %s at %s: %s",
+                        model,
+                        self._address,
+                        err,
+                    )
+                    errors["base"] = "not_advertising"
                 except (BleakError, OSError, TimeoutError) as err:
                     _LOGGER.warning(
                         "Could not read telemetry from Solix %s at %s: %s",
@@ -139,7 +165,9 @@ class SolixBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
         # Wait for the packet carrying the battery group when the model has one,
         # otherwise settle for the first property it implements.
         probe = ("battery_percentage",) if "battery_percentage" in properties else properties[:1]
-        return await async_read_snapshot(factory, ble_device, properties, required=probe)
+        return await async_read_snapshot(
+            factory, ble_device, properties, required=probe, timeout=PROBE_TIMEOUT
+        )
 
     @staticmethod
     @callback

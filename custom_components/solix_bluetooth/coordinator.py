@@ -69,7 +69,11 @@ class SolixCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 f"{DOMAIN} telemetry {self.address}",
             )
             return await self._session_task
-        except (BleakError, OSError, TimeoutError) as err:
+        except TimeoutError as err:
+            raise UpdateFailed(
+                f"Timed out establishing a Solix session with {self.address}"
+            ) from err
+        except (BleakError, OSError) as err:
             raise UpdateFailed(f"Unable to read Solix telemetry: {err}") from err
         finally:
             self._session_task = None
