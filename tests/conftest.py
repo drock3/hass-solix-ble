@@ -1,6 +1,6 @@
 """Fixtures for tests using Home Assistant with no Bluetooth hardware."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
 from bleak.backends.device import BLEDevice
@@ -80,9 +80,19 @@ def bluetooth_device(discovery_info):
 
 @pytest.fixture
 def mock_snapshot(snapshot):
-    with patch(
-        "custom_components.solix_bluetooth.coordinator.async_read_snapshot",
-        new_callable=AsyncMock,
-        return_value=snapshot,
-    ) as read:
+    """Replace the persistent connection with one that returns a canned snapshot."""
+    read = AsyncMock(return_value=snapshot)
+
+    def build(device_factory, properties, on_telemetry=None):
+        connection = Mock(connected=False)
+
+        async def async_connect(ble_device, **kwargs):
+            return await read(device_factory, ble_device, properties)
+
+        connection.async_connect = AsyncMock(side_effect=async_connect)
+        connection.async_disconnect = AsyncMock()
+        connection.snapshot = Mock(return_value=snapshot)
+        return connection
+
+    with patch("custom_components.solix_bluetooth.coordinator.SolixConnection", side_effect=build):
         yield read

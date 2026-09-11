@@ -21,7 +21,9 @@ bluetooth_proxy:
   active: true
 ```
 
-This is a configuration fragment, not a complete ESPHome firmware file. Keep your board, network, API, and OTA settings. See [ESPHome Bluetooth Proxy](https://esphome.io/components/bluetooth_proxy/).
+This is a configuration fragment for the ESPHome proxy, not Home Assistant's configuration or a complete ESPHome firmware file. Keep your board, network, API, and OTA settings. `bluetooth_proxy.active` enables the GATT connections required to read telemetry. See [ESPHome Bluetooth Proxy](https://esphome.io/components/bluetooth_proxy/).
+
+**Active scanning is separate:** ESPHome defaults `esp32_ble_tracker.scan_parameters.active` to `true`, so explicitly adding it is optional and normally changes nothing. If you previously disabled active scanning, re-enabling it may help discovery by requesting additional advertisement data; it is not an additional setup requirement for this integration.
 
 ## Install
 
@@ -69,18 +71,20 @@ Firmware and serial number appear in device information when available. Missing 
 
 ## How Connections Work
 
-Every poll asks Home Assistant for a current, connectable `BLEDevice`. SolixBLE receives that object, preserving Home Assistant's routing through local adapters or remote proxies. This integration never starts a standalone Bleak scan and never connects using a bare MAC address.
+Every reconnect asks Home Assistant for a current, connectable `BLEDevice`. SolixBLE receives that object, preserving Home Assistant's routing through local adapters or remote proxies. This integration never starts a standalone Bleak scan and never connects using a bare MAC address.
 
-A poll connects, negotiates the protocol, receives a telemetry snapshot, then disconnects. The default interval between polls is **60 seconds**, adjustable from **30 to 3600 seconds** under the integration's options. The interval starts after the preceding read completes, so slow negotiation lengthens the effective cadence. This is periodic sampling, not a continuous live stream.
+The integration holds **one long-lived connection** and publishes telemetry as the device pushes it, so sensors update as fast as the device reports. A periodic check runs every **60 seconds** by default, adjustable from **30 to 3600 seconds** under the integration's options; it only reconnects when the session has dropped, otherwise it republishes the latest values. Keeping the session open avoids the repeated pairing handshake, which is the main source of dropouts and unavailable sensors.
 
-Short sessions free proxy connection slots between readings. Failures mark sensors unavailable until a subsequent poll succeeds; failed initial setup is retried by Home Assistant. Unload, shutdown, timeout, and cancellation release active sessions. A new library device is created for each session, avoiding reuse of its reconnect state.
+The connection occupies one proxy or adapter slot for as long as the integration is loaded. Failures mark sensors unavailable until a reconnect succeeds; failed initial setup is retried by Home Assistant. Unload, shutdown, timeout, and cancellation release the session, and a new library device is created for each reconnect, avoiding reuse of its reconnect state.
 
 ## Troubleshooting
 
-- **No devices found:** Confirm Bluetooth is enabled on the Solix, the proxy is online in Home Assistant, and `bluetooth_proxy.active` is true. This integration matches SolixBLE's advertised `0000ff09-0000-1000-8000-00805f9b34fb` service; devices that do not advertise it will not be listed.
-- **Connection fails:** Close the Anker app, move the proxy closer, and check its free connection slots. A passive-only proxy can see advertisements but cannot read this telemetry.
-- **Wrong or missing readings:** Check the exact model, particularly C1000 versus C1000 Gen 2. Firmware variants may need changes in SolixBLE. Similar models can parse plausible but incorrect values, so confirm initial readings against the device display.
-- **Solarbank or other firmware issues:** Check SolixBLE's issues and support table. The integration pins a stable version and does not pull unreleased changes from upstream's main branch.
+- **No devices found:** Confirm the proxy is online through Home Assistant's ESPHome integration and `bluetooth_proxy.active` is enabled. Check Home Assistant's Bluetooth advertisement monitor to see whether the station is visible. This integration lists connectable devices advertising the `0000ff09-0000-1000-8000-00805f9b34fb` service. For more discovery information, check SolixBLE's [Finding a device](https://solixble.readthedocs.io/en/latest/usage.html#finding-a-device) section.
+- **Bluetooth connection or discovery issues:** Make sure to check SolixBLE's [Bluetooth connection](https://solixble.readthedocs.io/en/latest/limitations.html#bluetooth-connection) section for more information.
+- **Bluetooth and Wi-Fi:** See SolixBLE's [Bluetooth and Wi-Fi](https://solixble.readthedocs.io/en/latest/limitations.html#bluetooth-and-wi-fi) section for more information.
+- **Proxy connection issues:** Check the proxy's free connection slots and [ESPHome Bluetooth Proxy documentation](https://esphome.io/components/bluetooth_proxy/).
+- **Wrong or missing readings:** Check the selected model and compare readings with the station's display. For more information, see SolixBLE's [Updates](https://solixble.readthedocs.io/en/latest/limitations.html#updates) and [Device support](https://solixble.readthedocs.io/en/latest/limitations.html#device-support) sections.
+- **Model or firmware issues:** Check SolixBLE's [support tables](https://solixble.readthedocs.io/en/latest/) and [issue tracker](https://github.com/flip-dots/SolixBLE/issues) for more information.
 - **Logs:** Look for `custom_components.solix_bluetooth` and `SolixBLE`. Review and redact addresses, serials, and raw protocol data before sharing logs; verbose upstream logs may contain negotiation material.
 
 ## Development

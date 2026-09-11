@@ -25,10 +25,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolixConfigEntry) -> boo
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: SolixConfigEntry) -> bool:
-    """Unload sensors and disconnect any active telemetry session."""
-    if unload_ok := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
-        await entry.runtime_data.async_shutdown()
-    return unload_ok
+    """Unload sensors; the coordinator disconnects via its own unload hook."""
+    return await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
 
 
 async def async_update_options(hass: HomeAssistant, entry: SolixConfigEntry) -> None:

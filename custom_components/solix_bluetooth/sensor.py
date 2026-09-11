@@ -33,17 +33,20 @@ from .coordinator import SolixCoordinator
 
 PARALLEL_UPDATES = 0
 
+_ACRONYMS = frozenset({"ac", "dc", "pv", "usb", "a1", "a2", "c1", "c2", "c3", "c4"})
+
+
+def _title(key: str) -> str:
+    """Humanise a library property name, keeping hardware acronyms uppercase."""
+    name = " ".join(word.upper() if word in _ACRONYMS else word for word in key.split("_"))
+    return name[0].upper() + name[1:]
+
+
 SENSORS = (
     *(
         SensorEntityDescription(
             key=key,
-            name=(
-                key.replace("_", " ")
-                .capitalize()
-                .replace("Usb ", "USB ")
-                .replace("Ac ", "AC ")
-                .replace("Dc ", "DC ")
-            ),
+            name=_title(key),
             native_unit_of_measurement=UnitOfPower.WATT,
             device_class=SensorDeviceClass.POWER,
             state_class=SensorStateClass.MEASUREMENT,
@@ -53,7 +56,7 @@ SENSORS = (
     *(
         SensorEntityDescription(
             key=key,
-            name=key.replace("_", " ").capitalize(),
+            name=_title(key),
             native_unit_of_measurement=PERCENTAGE,
             device_class=SensorDeviceClass.BATTERY if "percentage" in key else None,
             state_class=SensorStateClass.MEASUREMENT,
@@ -64,7 +67,7 @@ SENSORS = (
     *(
         SensorEntityDescription(
             key=key,
-            name=key.replace("_", " ").capitalize(),
+            name=_title(key),
             native_unit_of_measurement=UnitOfTemperature.CELSIUS,
             device_class=SensorDeviceClass.TEMPERATURE,
             state_class=SensorStateClass.MEASUREMENT,
@@ -72,13 +75,10 @@ SENSORS = (
         )
         for key in ("temperature", "temperature_expansion")
     ),
-    *(
-        SensorEntityDescription(key=key, name=key.replace("_", " ").capitalize())
-        for key in STATUS_PROPERTIES
-    ),
+    *(SensorEntityDescription(key=key, name=_title(key)) for key in STATUS_PROPERTIES),
     SensorEntityDescription(
         key="time_remaining",
-        name="Time remaining",
+        name=_title("time_remaining"),
         native_unit_of_measurement=UnitOfTime.HOURS,
         device_class=SensorDeviceClass.DURATION,
         state_class=SensorStateClass.MEASUREMENT,

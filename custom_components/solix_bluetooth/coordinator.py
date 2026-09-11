@@ -13,17 +13,17 @@ from bleak.exc import BleakError
 from homeassistant.components import bluetooth
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import CONF_ADDRESS, CONF_MODEL, CONF_SCAN_INTERVAL
-from homeassistant.core import Event, HomeAssistant
+from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, MODELS, TELEMETRY_PROPERTIES
-from .transport import async_read_snapshot
+from .transport import SolixConnection
 
 _LOGGER = logging.getLogger(__name__)
 
 
 class SolixCoordinator(DataUpdateCoordinator[dict[str, Any]]):
-    """Fetch all sensors in one short-lived connection per polling cycle."""
+    """Keep one connection open, publish pushed telemetry, and poll as a keepalive."""
 
     def __init__(self, hass: HomeAssistant, entry: ConfigEntry) -> None:
         super().__init__(
@@ -47,10 +47,21 @@ class SolixCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         self._session_task: asyncio.Task | None = None
         self._closing = False
+        self.connection = SolixConnection(
+            self.device_factory, self.properties, self._handle_telemetry
+        )
+
+    @callback
+    def _handle_telemetry(self, snapshot: dict[str, Any]) -> None:
+        """Publish notifications pushed by the device between polling cycles."""
+        if not self._closing:
+            self.async_set_updated_data(snapshot)
 
     async def _async_update_data(self) -> dict[str, Any]:
         if self._closing:
             raise UpdateFailed("Integration is shutting down")
+        if self.connection.connected:
+            return self.connection.snapshot()
         ble_device = bluetooth.async_ble_device_from_address(
             self.hass, self.address, connectable=True
         )
@@ -58,7 +69,7 @@ class SolixCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             raise UpdateFailed("Device is not visible to a connectable Bluetooth adapter")
         try:
             self._session_task = self.hass.async_create_task(
-                async_read_snapshot(self.device_factory, ble_device, self.properties),
+                self.connection.async_connect(ble_device),
                 f"{DOMAIN} telemetry {self.address}",
             )
             return await self._session_task
@@ -68,13 +79,14 @@ class SolixCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._session_task = None
 
     async def async_shutdown(self) -> None:
-        """Cancel an active read and release its proxy slot before unloading."""
+        """Cancel an active read and release the proxy slot before unloading."""
         self._closing = True
         await super().async_shutdown()
         if task := self._session_task:
             task.cancel()
             with suppress(asyncio.CancelledError):
                 await task
+        await self.connection.async_disconnect()
 
     async def async_stop(self, event: Event) -> None:
         """Release the connection when Home Assistant stops."""

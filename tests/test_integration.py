@@ -76,14 +76,14 @@ async def test_shutdown_cancels_active_read(hass, config_entry, bluetooth_device
     started = asyncio.Event()
     cleaned_up = asyncio.Event()
 
-    async def read(*args):
+    async def connect(*args, **kwargs):
         started.set()
         try:
             await asyncio.Event().wait()
         finally:
             cleaned_up.set()
 
-    with patch("custom_components.solix_bluetooth.coordinator.async_read_snapshot", read):
+    with patch.object(coordinator.connection, "async_connect", connect):
         task = asyncio.create_task(coordinator._async_update_data())
         await started.wait()
         await coordinator.async_shutdown()
@@ -92,6 +92,15 @@ async def test_shutdown_cancels_active_read(hass, config_entry, bluetooth_device
     assert cleaned_up.is_set()
     with pytest.raises(UpdateFailed):
         await coordinator._async_update_data()
+
+
+async def test_pushed_telemetry_updates_sensors(hass, config_entry, bluetooth_device, snapshot):
+    coordinator = SolixCoordinator(hass, config_entry)
+    with patch.object(coordinator.connection, "async_connect", return_value=snapshot):
+        await coordinator.async_refresh()
+    coordinator._handle_telemetry({**snapshot, "battery_percentage": 65})
+    assert coordinator.data["battery_percentage"] == 65
+    await coordinator.async_shutdown()
 
 
 @pytest.mark.parametrize(

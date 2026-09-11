@@ -26,7 +26,7 @@ class SolixBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
     VERSION = 1
 
     def __init__(self) -> None:
-        self._devices: dict[str, bluetooth.BluetoothServiceInfoBleak] = {}
+        self._devices: dict[str, str] = {}
         self._address = ""
         self._name = ""
 
@@ -47,18 +47,16 @@ class SolixBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
         """Select from devices already seen by Home Assistant or its proxies."""
         if user_input is not None:
             self._address = user_input[CONF_ADDRESS]
-            self._name = self._devices[self._address].name
+            self._name = self._devices[self._address]
             await self.async_set_unique_id(format_mac(self._address))
             self._abort_if_unique_id_configured()
             return await self.async_step_model()
 
         configured = self._async_current_ids()
         self._devices = {
-            info.address: info
+            info.address: info.name
             for info in bluetooth.async_discovered_service_info(self.hass, connectable=True)
-            if SERVICE_UUID in info.service_uuids
-            and info.connectable
-            and format_mac(info.address) not in configured
+            if SERVICE_UUID in info.service_uuids and format_mac(info.address) not in configured
         }
         if not self._devices:
             return self.async_abort(reason="no_devices_found")
@@ -67,10 +65,7 @@ class SolixBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
             data_schema=vol.Schema(
                 {
                     vol.Required(CONF_ADDRESS): vol.In(
-                        {
-                            address: f"{info.name} ({address})"
-                            for address, info in self._devices.items()
-                        }
+                        {address: f"{name} ({address})" for address, name in self._devices.items()}
                     )
                 }
             ),
