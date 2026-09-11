@@ -1,5 +1,6 @@
 """Fixtures for tests using Home Assistant with no Bluetooth hardware."""
 
+import time
 from unittest.mock import AsyncMock, Mock, patch
 
 import pytest
@@ -38,7 +39,7 @@ def discovery_info():
         device=device,
         advertisement=None,
         connectable=True,
-        time=0,
+        time=time.monotonic(),
         tx_power=None,
     )
 
@@ -71,10 +72,17 @@ def snapshot():
 
 @pytest.fixture
 def bluetooth_device(discovery_info):
-    with patch(
-        "homeassistant.components.bluetooth.async_ble_device_from_address",
-        return_value=discovery_info.device,
-    ) as lookup:
+    """Present the device as connectable and still advertising."""
+    with (
+        patch(
+            "homeassistant.components.bluetooth.async_ble_device_from_address",
+            return_value=discovery_info.device,
+        ) as lookup,
+        patch(
+            "homeassistant.components.bluetooth.async_last_service_info",
+            return_value=discovery_info,
+        ),
+    ):
         yield lookup
 
 

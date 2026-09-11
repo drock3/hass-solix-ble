@@ -2,7 +2,7 @@
 
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, Mock, PropertyMock
+from unittest.mock import AsyncMock, Mock, PropertyMock, patch
 
 from bleak.backends.device import BLEDevice
 from SolixBLE import C1000
@@ -74,8 +74,17 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
     async def test_failed_connection_disconnects(self):
         self.device.connect.return_value = False
         with self.assertRaises(ConnectionError):
-            await self.connection().async_connect(self.ble_device)
+            await self.connection().async_connect(self.ble_device, attempts=1)
         self.device.disconnect.assert_awaited_once()
+
+    async def test_a_failed_session_is_retried(self):
+        self.device.connect.return_value = False
+        with (
+            patch("custom_components.solix_bluetooth.transport.RETRY_DELAY", 0),
+            self.assertRaises(ConnectionError),
+        ):
+            await self.connection().async_connect(self.ble_device, attempts=3)
+        self.assertEqual(self.device.connect.await_count, 3)
 
     async def test_waits_for_telemetry_after_connection(self):
         self.device.available = False
@@ -102,8 +111,10 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
 
     async def test_missing_telemetry_times_out_and_disconnects(self):
         self.device.available = False
-        with self.assertRaises(TimeoutError):
-            await self.connection().async_connect(self.ble_device, timeout=0.01)
+        with self.assertRaises(ConnectionError):
+            await self.connection().async_connect(
+                self.ble_device, telemetry_timeout=0.01, attempts=1
+            )
         self.device.disconnect.assert_awaited_once()
 
     async def test_values_from_earlier_packets_are_retained(self):
@@ -165,10 +176,8 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
 
         result = await connection.async_connect(ble_device)
 
-        self.assertEqual(
-            result,
-            {"battery_percentage": 72, "power_in": 0, "temperature": -1},
-        )
+        # temperature decodes to the library's -1 sentinel, so it is dropped.
+        self.assertEqual(result, {"battery_percentage": 72, "power_in": 0})
         factory.assert_called_once_with(ble_device)
         await connection.async_disconnect()
         device.disconnect.assert_awaited_once()
