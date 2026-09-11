@@ -16,7 +16,7 @@ from homeassistant.const import CONF_ADDRESS, CONF_MODEL, CONF_SCAN_INTERVAL
 from homeassistant.core import Event, HomeAssistant, callback
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, MODELS, TELEMETRY_PROPERTIES
+from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, MODELS, supported_properties
 from .transport import SolixConnection
 
 _LOGGER = logging.getLogger(__name__)
@@ -40,11 +40,7 @@ class SolixCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.model: str = entry.data[CONF_MODEL]
         self.device_name = entry.title
         self.device_factory = MODELS[self.model]
-        self.properties = tuple(
-            name
-            for name in TELEMETRY_PROPERTIES
-            if isinstance(getattr(self.device_factory, name, None), property)
-        )
+        self.properties = supported_properties(self.device_factory)
         self._session_task: asyncio.Task | None = None
         self._closing = False
         self.connection = SolixConnection(

@@ -2,7 +2,7 @@
 
 import asyncio
 import unittest
-from unittest.mock import AsyncMock, Mock
+from unittest.mock import AsyncMock, Mock, PropertyMock
 
 from bleak.backends.device import BLEDevice
 from SolixBLE import C1000
@@ -20,8 +20,15 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         self.device.disconnect = AsyncMock()
         self.factory = Mock(return_value=self.device)
 
-    def connection(self, properties=(), on_telemetry=None):
-        return SolixConnection(self.factory, properties, on_telemetry)
+    def connection(self, properties=(), on_telemetry=None, required=()):
+        return SolixConnection(self.factory, properties, on_telemetry, required)
+
+    def stub_missing_battery(self):
+        """Make battery_percentage behave like a packet that omits its parameter group."""
+        prop = PropertyMock(side_effect=KeyError("c1"))
+        type(self.device).battery_percentage = prop
+        self.addCleanup(delattr, type(self.device), "battery_percentage")
+        return prop
 
     async def test_uses_supplied_device_and_stays_connected(self):
         connection = self.connection(("battery_percentage", "power_in"))
@@ -99,6 +106,40 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
             await self.connection().async_connect(self.ble_device, timeout=0.01)
         self.device.disconnect.assert_awaited_once()
 
+    async def test_values_from_earlier_packets_are_retained(self):
+        connection = self.connection(("battery_percentage", "power_in"))
+        await connection.async_connect(self.ble_device)
+        self.stub_missing_battery()
+        self.device.power_in = 45
+        self.assertEqual(connection.snapshot(), {"battery_percentage": 72, "power_in": 45})
+
+    async def test_waits_for_the_packet_carrying_a_required_property(self):
+        battery = self.stub_missing_battery()
+
+        def deliver_battery():
+            battery.side_effect = None
+            battery.return_value = 72
+            self.device.add_callback.call_args.args[0]()
+
+        async def connect(**kwargs):
+            asyncio.get_running_loop().call_soon(deliver_battery)
+            return True
+
+        self.device.connect.side_effect = connect
+        connection = self.connection(("battery_percentage",), required=("battery_percentage",))
+        self.assertEqual(
+            await connection.async_connect(self.ble_device), {"battery_percentage": 72}
+        )
+
+    async def test_partial_telemetry_is_returned_when_a_required_property_never_arrives(self):
+        self.stub_missing_battery()
+        connection = self.connection(
+            ("battery_percentage", "power_in"), required=("battery_percentage",)
+        )
+        result = await connection.async_connect(self.ble_device, telemetry_timeout=0.01)
+        self.assertEqual(result, {"power_in": 0})
+        self.assertTrue(connection.connected)
+
     async def test_cancellation_disconnects(self):
         self.device.connect.side_effect = asyncio.CancelledError
         with self.assertRaises(asyncio.CancelledError):
@@ -126,7 +167,7 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(
             result,
-            {"battery_percentage": 72, "power_in": 0, "temperature": -1, "battery_health": None},
+            {"battery_percentage": 72, "power_in": 0, "temperature": -1},
         )
         factory.assert_called_once_with(ble_device)
         await connection.async_disconnect()

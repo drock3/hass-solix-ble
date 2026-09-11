@@ -83,6 +83,14 @@ The connection occupies one proxy or adapter slot for as long as the integration
 - **Bluetooth connection or discovery issues:** Make sure to check SolixBLE's [Bluetooth connection](https://solixble.readthedocs.io/en/latest/limitations.html#bluetooth-connection) section for more information.
 - **Bluetooth and Wi-Fi:** See SolixBLE's [Bluetooth and Wi-Fi](https://solixble.readthedocs.io/en/latest/limitations.html#bluetooth-and-wi-fi) section for more information.
 - **Proxy connection issues:** Check the proxy's free connection slots and [ESPHome Bluetooth Proxy documentation](https://esphome.io/components/bluetooth_proxy/).
+- **"Could not read telemetry" during setup:** The encryption handshake alone may take up to 90 seconds, so allow setup a few minutes before retrying. The exact Bluetooth error is written to the Home Assistant log by `custom_components.solix_bluetooth.config_flow`; add the debug logger below and retry to capture the negotiation stage that failed.
+
+  ```yaml
+  logger:
+    logs:
+      custom_components.solix_bluetooth: debug
+      SolixBLE: debug
+  ```
 - **Wrong or missing readings:** Check the selected model and compare readings with the station's display. For more information, see SolixBLE's [Updates](https://solixble.readthedocs.io/en/latest/limitations.html#updates) and [Device support](https://solixble.readthedocs.io/en/latest/limitations.html#device-support) sections.
 - **Model or firmware issues:** Check SolixBLE's [support tables](https://solixble.readthedocs.io/en/latest/) and [issue tracker](https://github.com/flip-dots/SolixBLE/issues) for more information.
 - **Logs:** Look for `custom_components.solix_bluetooth` and `SolixBLE`. Review and redact addresses, serials, and raw protocol data before sharing logs; verbose upstream logs may contain negotiation material.

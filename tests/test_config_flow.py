@@ -107,6 +107,30 @@ async def test_invalid_telemetry_rejected(hass, discovery_info, bluetooth_device
     assert result["errors"] == {"base": "invalid_telemetry"}
 
 
+async def test_telemetry_without_a_battery_reading_is_accepted(
+    hass, discovery_info, bluetooth_device
+):
+    """The device replaces its parameter set per packet, so the battery group may be absent."""
+    result = await hass.config_entries.flow.async_init(
+        DOMAIN, context={"source": SOURCE_BLUETOOTH}, data=discovery_info
+    )
+    with (
+        patch(
+            "custom_components.solix_bluetooth.config_flow.async_read_snapshot",
+            new_callable=AsyncMock,
+            return_value={"power_in": 0, "temperature": 21},
+        ) as read,
+        patch("custom_components.solix_bluetooth.async_setup_entry", return_value=True),
+    ):
+        result = await hass.config_entries.flow.async_configure(
+            result["flow_id"], {"model": "C1000"}
+        )
+        await hass.async_block_till_done()
+    assert result["type"] is FlowResultType.CREATE_ENTRY
+    assert "battery_percentage" in read.call_args.args[2]
+    assert read.call_args.kwargs["required"] == ("battery_percentage",)
+
+
 async def test_polling_options(hass, config_entry):
     result = await hass.config_entries.options.async_init(config_entry.entry_id)
     assert result["type"] is FlowResultType.FORM

@@ -1,5 +1,7 @@
 """Constants and supported Solix models."""
 
+from typing import Any
+
 from SolixBLE import (
     C300,
     C300DC,
@@ -88,3 +90,12 @@ TELEMETRY_PROPERTIES = (
     "serial_number",
     "software_version",
 )
+
+
+def supported_properties(device_factory: Any) -> tuple[str, ...]:
+    """Return the telemetry properties the given model class actually implements."""
+    return tuple(
+        name
+        for name in TELEMETRY_PROPERTIES
+        if isinstance(getattr(device_factory, name, None), property)
+    )

@@ -14,10 +14,29 @@ from homeassistant.const import CONF_ADDRESS, CONF_MODEL, CONF_NAME, CONF_SCAN_I
 from homeassistant.core import callback
 from homeassistant.helpers.device_registry import format_mac
 
-from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, MODEL_NAMES, MODELS, SERVICE_UUID
+from .const import (
+    DEFAULT_SCAN_INTERVAL,
+    DOMAIN,
+    MODEL_NAMES,
+    MODELS,
+    SERVICE_UUID,
+    supported_properties,
+)
 from .transport import async_read_snapshot
 
 _LOGGER = logging.getLogger(__name__)
+
+
+def _is_valid_telemetry(snapshot: dict[str, Any]) -> bool:
+    """Reject a session that decoded nothing, or a battery reading from the wrong model.
+
+    SolixBLE raises KeyError for parameters the selected model does not know about, so
+    a mismatched model yields an empty or implausible snapshot.
+    """
+    percentage = snapshot.get("battery_percentage")
+    if isinstance(percentage, (int, float)):
+        return 0 <= percentage <= 100
+    return any(value is not None for value in snapshot.values())
 
 
 class SolixBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
@@ -83,13 +102,16 @@ class SolixBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
                 errors["base"] = "cannot_connect"
             else:
                 try:
-                    snapshot = await async_read_snapshot(
-                        MODELS[model], ble_device, ("battery_percentage",)
-                    )
-                    percentage = snapshot.get("battery_percentage")
-                    if not isinstance(percentage, (int, float)) or not 0 <= percentage <= 100:
+                    snapshot = await self._async_probe(model, ble_device)
+                    if not _is_valid_telemetry(snapshot):
                         errors["base"] = "invalid_telemetry"
-                except (BleakError, OSError, TimeoutError):
+                except (BleakError, OSError, TimeoutError) as err:
+                    _LOGGER.warning(
+                        "Could not read telemetry from Solix %s at %s: %s",
+                        model,
+                        self._address,
+                        err,
+                    )
                     errors["base"] = "cannot_connect"
                 except Exception:
                     _LOGGER.exception("Unexpected error validating Solix telemetry")
@@ -109,6 +131,15 @@ class SolixBluetoothConfigFlow(ConfigFlow, domain=DOMAIN):
             description_placeholders={"name": self._name, "address": self._address},
             errors=errors,
         )
+
+    async def _async_probe(self, model: str, ble_device: Any) -> dict[str, Any]:
+        """Open one session and collect whatever the model is able to report."""
+        factory = MODELS[model]
+        properties = supported_properties(factory)
+        # Wait for the packet carrying the battery group when the model has one,
+        # otherwise settle for the first property it implements.
+        probe = ("battery_percentage",) if "battery_percentage" in properties else properties[:1]
+        return await async_read_snapshot(factory, ble_device, properties, required=probe)
 
     @staticmethod
     @callback

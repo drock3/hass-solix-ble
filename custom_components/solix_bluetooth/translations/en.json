@@ -9,13 +9,13 @@
       },
       "model": {
         "title": "Set up {name}",
-        "description": "Select the exact model for {name} ({address}). Close the Anker app before continuing. Connection verification can take up to two minutes.",
+        "description": "Select the exact model for {name} ({address}). Close the Anker app before continuing. Encryption negotiation is slow, so verification can take several minutes.",
         "data": {"model": "Model"}
       }
     },
     "error": {
-      "cannot_connect": "Could not read telemetry. Make sure the device is awake, the Anker app is disconnected, and an active Bluetooth proxy has a free connection slot.",
-      "invalid_telemetry": "The device connected but did not provide valid battery data. Check the selected model and firmware support in SolixBLE.",
+      "cannot_connect": "Could not read telemetry. Make sure the device is awake, the Anker app is disconnected, and an active Bluetooth proxy has a free connection slot. The Home Assistant log records the underlying Bluetooth error.",
+      "invalid_telemetry": "The device connected but did not report telemetry this integration recognises. Select a different model, or check firmware support in SolixBLE.",
       "unknown": "An unexpected error occurred. Check the Home Assistant logs."
     },
     "abort": {
