@@ -15,6 +15,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: SolixConfigEntry) -> boo
     """Set up telemetry for one Solix device."""
     coordinator = SolixCoordinator(hass, entry)
     await coordinator.async_config_entry_first_refresh()
+    coordinator.async_track_advertisements()
     entry.runtime_data = coordinator
     entry.async_on_unload(
         hass.bus.async_listen_once(EVENT_HOMEASSISTANT_STOP, coordinator.async_stop)

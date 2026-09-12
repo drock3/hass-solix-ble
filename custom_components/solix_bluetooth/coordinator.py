@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import Callable
 from contextlib import suppress
 from datetime import timedelta
 from typing import Any
@@ -43,9 +44,53 @@ class SolixCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self.properties = supported_properties(self.device_factory)
         self._session_task: asyncio.Task | None = None
         self._closing = False
+        self._ble_device: Any | None = None
+        self._unsubscribe_advertisements: Callable[[], None] | None = None
         self.connection = SolixConnection(
             self.device_factory, self.properties, self._handle_telemetry
         )
+
+    @callback
+    def async_track_advertisements(self) -> None:
+        """Reconnect as soon as a device that went away starts advertising again."""
+        self._unsubscribe_advertisements = bluetooth.async_register_callback(
+            self.hass,
+            self._handle_advertisement,
+            bluetooth.BluetoothCallbackMatcher(address=self.address, connectable=True),
+            bluetooth.BluetoothScanningMode.PASSIVE,
+        )
+
+    @callback
+    def _handle_advertisement(
+        self,
+        service_info: bluetooth.BluetoothServiceInfoBleak,
+        change: bluetooth.BluetoothChange,
+    ) -> None:
+        self._ble_device = service_info.device
+        if self._closing or self.connection.healthy:
+            return
+        self.hass.async_create_task(self.async_request_refresh())
+
+    @callback
+    def _resolve_device(self) -> Any | None:
+        """Route to the device, falling back to the adapter that last reached it.
+
+        Solix devices stop advertising while they are connected, so Home Assistant
+        drops them from its cache once a long session ends. Retrying through the
+        last known route is what turns an outage into a reconnect instead of
+        waiting for someone to power cycle the device.
+        """
+        ble_device = bluetooth.async_ble_device_from_address(
+            self.hass, self.address, connectable=True
+        )
+        if ble_device is not None:
+            self._ble_device = ble_device
+        elif self._ble_device is not None:
+            _LOGGER.debug(
+                "%s is not advertising; retrying through its last known adapter",
+                self.address,
+            )
+        return self._ble_device
 
     @callback
     def _handle_telemetry(self, snapshot: dict[str, Any]) -> None:
@@ -56,16 +101,14 @@ class SolixCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def _async_update_data(self) -> dict[str, Any]:
         if self._closing:
             raise UpdateFailed("Integration is shutting down")
-        if self.connection.connected:
+        if self.connection.healthy:
             return self.connection.snapshot()
-        ble_device = bluetooth.async_ble_device_from_address(
-            self.hass, self.address, connectable=True
-        )
+        ble_device = self._resolve_device()
         if ble_device is None:
             raise UpdateFailed("Device is not visible to a connectable Bluetooth adapter")
         try:
             self._session_task = self.hass.async_create_task(
-                self.connection.async_connect(ble_device),
+                self.connection.async_connect(ble_device, resolve=self._resolve_device),
                 f"{DOMAIN} telemetry {self.address}",
             )
             return await self._session_task
@@ -81,6 +124,9 @@ class SolixCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_shutdown(self) -> None:
         """Cancel an active read and release the proxy slot before unloading."""
         self._closing = True
+        if unsubscribe := self._unsubscribe_advertisements:
+            self._unsubscribe_advertisements = None
+            unsubscribe()
         await super().async_shutdown()
         if task := self._session_task:
             task.cancel()

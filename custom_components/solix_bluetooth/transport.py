@@ -6,6 +6,7 @@ import asyncio
 import logging
 from collections.abc import Callable, Iterable
 from contextlib import suppress
+from datetime import datetime
 from typing import Any
 
 from bleak.exc import BleakError
@@ -25,6 +26,9 @@ DISCONNECT_TIMEOUT = 10
 # session unusable; only a fresh link recovers it.
 CONNECT_ATTEMPTS = 3
 RETRY_DELAY = 5
+# A wedged proxy keeps reporting a live link long after the device stopped talking,
+# so a session that has gone quiet has to be treated as dead on its own merit.
+TELEMETRY_STALE_TIMEOUT = 180
 
 _DECODE_ERRORS = (KeyError, IndexError, ValueError, TypeError, OverflowError)
 _SESSION_ERRORS = (BleakError, OSError, TimeoutError)
@@ -52,8 +56,24 @@ class SolixConnection:
 
     @property
     def connected(self) -> bool:
-        """Whether the open session is still delivering telemetry."""
+        """Whether the session is negotiated and has parameters to report."""
         return self._device is not None and bool(self._device.available)
+
+    @property
+    def telemetry_age(self) -> float | None:
+        """Seconds since the device last sent a packet, if it ever has."""
+        stamp = getattr(self._device, "last_update", None)
+        if not isinstance(stamp, datetime):
+            return None
+        return max(0.0, (datetime.now() - stamp).total_seconds())
+
+    @property
+    def healthy(self) -> bool:
+        """Whether the session is up and packets are still arriving."""
+        if not self.connected:
+            return False
+        age = self.telemetry_age
+        return age is None or age < TELEMETRY_STALE_TIMEOUT
 
     async def async_connect(
         self,
@@ -61,13 +81,23 @@ class SolixConnection:
         timeout: float = CONNECT_TIMEOUT,
         telemetry_timeout: float = TELEMETRY_TIMEOUT,
         attempts: int = CONNECT_ATTEMPTS,
+        resolve: Callable[[], Any | None] | None = None,
     ) -> dict[str, Any]:
-        """Reuse the open session, reconnecting only once it has dropped."""
+        """Reuse the open session, reconnecting once it drops or falls silent."""
         async with self._lock:
-            if self.connected:
+            if self.healthy:
                 return self.snapshot()
+            if self.connected:
+                _LOGGER.info(
+                    "Solix session still looks connected but has sent no telemetry "
+                    "for %s seconds; rebuilding it",
+                    TELEMETRY_STALE_TIMEOUT,
+                )
             last_error: Exception | None = None
             for attempt in range(1, attempts + 1):
+                if attempt > 1 and resolve is not None:
+                    # The proxy that served the last attempt may have gone away.
+                    ble_device = resolve() or ble_device
                 try:
                     return await self._async_open(ble_device, timeout, telemetry_timeout)
                 except _SESSION_ERRORS as err:
@@ -153,11 +183,14 @@ class SolixConnection:
         device, self._device = self._device, None
         if device is None:
             return
-        device.remove_callback(self._handle_state_changed)
+        # Never let bookkeeping skip the disconnect; a leaked link keeps the
+        # device's only connection slot busy until it is power cycled.
+        with suppress(ValueError):
+            device.remove_callback(self._handle_state_changed)
         try:
             async with asyncio.timeout(DISCONNECT_TIMEOUT):
                 await device.disconnect()
-        except (TimeoutError, OSError):
+        except _SESSION_ERRORS:
             _LOGGER.warning("Unable to cleanly disconnect from Solix device", exc_info=True)
 
 

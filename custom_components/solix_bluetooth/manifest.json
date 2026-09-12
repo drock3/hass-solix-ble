@@ -15,5 +15,5 @@
   "iot_class": "local_polling",
   "loggers": ["SolixBLE"],
   "requirements": ["SolixBLE==3.9.0"],
-  "version": "0.2.1"
+  "version": "0.2.2"
 }

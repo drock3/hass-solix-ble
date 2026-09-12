@@ -1,7 +1,7 @@
 """Integration setup, sensor, recovery, and shutdown tests."""
 
 import asyncio
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from bleak.exc import BleakError
@@ -56,6 +56,30 @@ async def test_refresh_resolves_proxy_again(hass, config_entry, bluetooth_device
     await coordinator.async_refresh()
     assert mock_snapshot.call_args.args[1] is replacement
     assert bluetooth_device.call_count == 2
+    await coordinator.async_shutdown()
+
+
+async def test_reconnects_through_the_last_route_when_advertising_stops(
+    hass, config_entry, bluetooth_device, mock_snapshot, discovery_info
+):
+    coordinator = SolixCoordinator(hass, config_entry)
+    await coordinator.async_refresh()
+    bluetooth_device.return_value = None
+    await coordinator.async_refresh()
+    assert coordinator.last_update_success
+    assert mock_snapshot.call_args.args[1] is discovery_info.device
+    await coordinator.async_shutdown()
+
+
+async def test_advertisement_triggers_a_reconnect(
+    hass, config_entry, bluetooth_device, mock_snapshot, discovery_info
+):
+    coordinator = SolixCoordinator(hass, config_entry)
+    coordinator.async_track_advertisements()
+    with patch.object(coordinator, "async_request_refresh", new_callable=AsyncMock) as refresh:
+        coordinator._handle_advertisement(discovery_info, None)
+        await hass.async_block_till_done()
+    refresh.assert_awaited_once()
     await coordinator.async_shutdown()
 
 

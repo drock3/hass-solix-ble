@@ -82,6 +82,10 @@ def bluetooth_device(discovery_info):
             "homeassistant.components.bluetooth.async_last_service_info",
             return_value=discovery_info,
         ),
+        patch(
+            "homeassistant.components.bluetooth.async_register_callback",
+            return_value=Mock(),
+        ),
     ):
         yield lookup
 
@@ -92,7 +96,7 @@ def mock_snapshot(snapshot):
     read = AsyncMock(return_value=snapshot)
 
     def build(device_factory, properties, on_telemetry=None):
-        connection = Mock(connected=False)
+        connection = Mock(connected=False, healthy=False)
 
         async def async_connect(ble_device, **kwargs):
             return await read(device_factory, ble_device, properties)

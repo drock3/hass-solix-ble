@@ -2,12 +2,16 @@
 
 import asyncio
 import unittest
+from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock, PropertyMock, patch
 
 from bleak.backends.device import BLEDevice
 from SolixBLE import C1000
 
-from custom_components.solix_bluetooth.transport import SolixConnection
+from custom_components.solix_bluetooth.transport import (
+    TELEMETRY_STALE_TIMEOUT,
+    SolixConnection,
+)
 
 
 class TransportTests(unittest.IsolatedAsyncioTestCase):
@@ -59,6 +63,36 @@ class TransportTests(unittest.IsolatedAsyncioTestCase):
         await connection.async_connect(self.ble_device)
         self.assertEqual(self.factory.call_count, 2)
         self.device.disconnect.assert_awaited_once()
+
+    async def test_a_session_that_stops_sending_telemetry_is_rebuilt(self):
+        connection = self.connection()
+        await connection.async_connect(self.ble_device)
+        self.device.last_update = datetime.now() - timedelta(seconds=TELEMETRY_STALE_TIMEOUT + 1)
+        self.assertTrue(connection.connected)
+        self.assertFalse(connection.healthy)
+        await connection.async_connect(self.ble_device)
+        self.assertEqual(self.factory.call_count, 2)
+        self.device.disconnect.assert_awaited_once()
+
+    async def test_a_recent_packet_keeps_the_session(self):
+        connection = self.connection()
+        await connection.async_connect(self.ble_device)
+        self.device.last_update = datetime.now()
+        self.assertTrue(connection.healthy)
+        await connection.async_connect(self.ble_device)
+        self.factory.assert_called_once_with(self.ble_device)
+
+    async def test_a_retry_asks_for_a_fresh_route(self):
+        self.device.connect.return_value = False
+        replacement = object()
+        with (
+            patch("custom_components.solix_bluetooth.transport.RETRY_DELAY", 0),
+            self.assertRaises(ConnectionError),
+        ):
+            await self.connection().async_connect(
+                self.ble_device, attempts=2, resolve=lambda: replacement
+            )
+        self.assertEqual(self.factory.call_args_list[-1].args[0], replacement)
 
     async def test_disconnect_releases_the_session(self):
         connection = self.connection()
